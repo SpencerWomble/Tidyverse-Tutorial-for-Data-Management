@@ -1,0 +1,989 @@
+---
+title: "dplyr tutorial"
+author: "Spencer Womble"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Tidyverse-dplyr data management tutorial
+
+Created by: Spencer Womble
+
+Email: spencer.womble\@uga.edu
+
+Date: 9/10/2024
+
+# Objectives
+
+This tutorial is designed for beginner tidyverse users. Many basic dplyr/tidyverse functions related to data management are demonstrated here; however, this is certainly not an all-inclusive list. Refer to the package documentation/vignettes for details. This tutorial also briefly touches on some aspects of using ggplot (mostly within the context of plotting data from dplyr tibbles). The ggplot portion of this tutorial may be remedial for those familiar with the package. However, those without much ggplot experience may find it beneficial.
+
+# General Information about dplyr
+
+## The dplyr package
+
+From tidyverse.org: "dplyr is a grammar of data manipulation, providing a consistent set of verbs that help you solve the most common data manipulation challenges...". The dplyr package is part of the tidyverse environment and has become an R industry standard for data processing and manipulation due to its ease of use and flexibility. It reduces many of the redundancies required for data manipulation using base R and is readily compatible with other frequently used packages like ggplot2 or lubridate, along with base-R functions. A key feature of the dplyr package is the ability to chain functions together using operators called pipes. Using pipes can allow the user to avoid nesting functions within other functions, a cumbersome task which can quickly become a major time sink.
+
+## Pipes and structuring dplyr code
+
+A pipe is an operator used to chain functions together in a single block of code. This is useful as it allows you to perform multiple manipulations, calculations, etc., within a single code chunk. Functions within the chain may be independent or iterative. For example, one function may add a new column to a dataset while the next function in the pipe removes a different, unrelated column. The product of a function can also be passed to successive functions further down the pipe. A common example is to create a grouping column and then filter the data by the newly created grouping variable. The character string %\>% is used to indicate the start of a new function (i.e., a continuation of the pipe) that will be chained to the block of code.
+
+Here is an example of a pipe to remove NAs from a dataset:
+
+your_data %\>% na.omit()
+
+# tibbles vs data frames
+
+Data frames are the default tabular data structure in R. In tidyverse code, tibbles are the default tabular data structure. When tidyverse functions are applied to a data frame, the returned data will be in the form of a tibble unless manually converted back to a data frame. While data frames and tibbles are functionally similar, there are some minor differences to be aware of:
+
+### Printing:
+
+Data frames: The "print()" function prints all rows and by default, which can be visually overwhelming. This can be controlled by specifying: print(your_data, n = desired number of rows)
+
+Tibbles: Only the first 10 rows and all columns that fit on the screen are printed, showing a summary of the rest.
+
+### Conversion of inputs:
+
+Data frames: May convert strings to factors automatically.
+
+Tibbles: Keeps strings as characters by default (i.e., you usually have to manually specify factors)
+
+### Column names:
+
+Data frames: Require valid R variable names.
+
+Tibbles: Allow any characters in column names, including spaces (NEVER USE SPACES OR SPECIAL CHARACTERS!!!).
+
+### Row names:
+
+Data frames: Can have row names. \<- Only assign row names if you have a good reason and you know what you are doing.
+
+Tibbles: Don't use row names, preferring an explicit column for identifiers.
+
+# Package Conflicts
+
+There are some function names in dplyr/tidyverse which can conflict with other packages if the functions have the same name. For example, the "select()" function in dplyr is used to subset specific columns in a data frame. However, the "select()" function in the MASS package is used to select the best subset model of a linear regression. R may throw an error if both packages are loaded and the package is not specified in the function call. This can be avoided by explicitly calling the package name along with the function. Calling the package name for most functions is good code hygiene, and I encourage the reader to adopt the practice.
+
+Good way: data %\>% dplyr::select(var_1, var_3, var_5)
+
+Bad way: data %\>% select(var_1, var_3, var_5)
+
+# Code block structure in dplyr
+
+R code gets messy quickly. Staying organized and consistent reduces your risk of making an error or having code break. Here are some general guidelines on proper dplyr code structuring.
+
+1.  Minimize chain length - dplyr blocks can get large. Try to consolidate code to reduce redundancies.
+
+    ```{r}
+
+    # Bad way
+    iris %>% 
+      dplyr::mutate(new_petal_width = Petal.Width + 10) %>%
+      dplyr::mutate(new_petal_length = Petal.Length / 5)
+
+
+    # Good way
+    iris %>% 
+      dplr::mutate(new_petal_width = Petal.Width + 10,
+                          new_petal_length = Petal.Length / 5)
+
+    ```
+
+2.  Whitespace - it's a good idea to add whitespace before your pipe operator (%\>%). You should also start a new line after each operator. This "stacking" keeps the code readable and makes troubleshooting easier.
+
+    ```{r}
+
+    # Bad way
+    iris%>%dplyr::select(Species, Sepal.Length)%>%dplyr::mutate(log_sepal_length = log(Sepal.Length))
+
+
+    # Good way
+    iris %>% 
+      dplyr::select(Species, Sepal.Length) %>% 
+      dplyr::mutate(log_sepal_length = log(Sepal.Length))
+
+    ```
+
+3.  Wrap lines - if the arguments in a function don't all fit on one line. Move each argument to it's own line. dplyr should indent automatically. This can also be helpful in situations when you are selecting many variables or performing complex operations.
+
+    ```{r}
+
+    # Bad way:
+    iris %>%
+      dplyr::group_by(Species) %>% 
+      dplyr::summarise(Sepal.Length = mean(Sepal.Length), Sepal.Width = mean(Sepal.Width), Species = n_distinct(Species)) %>% 
+      dplyr::ungroup()
+
+
+    # Good way:
+    iris %>%
+      dplyr::group_by(Species) %>%
+      dplyr::summarise(
+        Sepal.Length = mean(Sepal.Length),
+        Sepal.Width = mean(Sepal.Width),
+        Species = n_distinct(Species)
+      ) %>%
+      dplyr::ungroup()
+
+    ```
+
+4.  Long blocks - try to keep code blocks short, even if this means adding intermediate blocks. The longer a block gets, the more difficult it is to read and troubleshoot. If you have multiple code blocks that are performing the same task, consider replacing them with a function.
+
+    ```{r}
+
+    # For example, if you frequently need to center variables (value - mean(value)), try a function rather than repeated dplyr blocks
+
+
+    # Bad way if reusing operation frequently:
+    str(iris %>%
+      dplyr::mutate(centered_sepal.length = Sepal.Length - mean(Sepal.Length),
+                    centered_sepal.width = Sepal.Width - mean(Sepal.Width),
+                    centered_petal.width = Petal.Width - mean(Petal.Length)) 
+    )
+
+
+
+    # Good way if reusing operation frequently:
+    center_variable <- function(data, vars) {
+      data %>%
+        mutate(across(all_of(vars), ~ . - mean(., na.rm = TRUE), 
+                      .names = "centered_{col}"))
+    }
+
+
+    center_variable(data = iris, vars = c("Sepal.Length", "Sepal.Width", "Petal.Width"))
+    ```
+
+# Common functions in dplyr
+
+! - used to tell R NOT to perform any action on a column listed with a "!" preceding the column name
+
+arrange - sort rows based on a grouping criteria (like species name or timestamp)
+
+case_when - dplyr version of an ifelse statement
+
+count - a method for seeing how many observations are contained within a data frame (see tally also for quick counting); compatible with group_by arguments
+
+ends_with - same function as start_with just for suffix matching
+
+filter - a method for sub-setting data. Works like "subset" in base R, but can be more useful as you can stack functions easier
+
+group_by - tells dplyr how it should group results when performing row-wise tasks
+
+mutate - create new columns/variables, perform operations or maniupulations
+
+n() - count observations for groups. Used within mutate or summarise when preceded by a group_by() function
+
+relocate - used to change the order of columns in a data frame
+
+rename - how to rename a column header
+
+select - subset data based on column names
+
+starts_with - a way to select data within a column based on a character match
+
+summarise - a method to summarize each group down to a single row. Often used to calculate descriptive statistics
+
+tibble - convert a data frame or vector to a tibble
+
+### Other related tidyverse functions
+
+#### tidyr package:
+
+pivot_longer - a method for turning data from a wide format to a long format
+
+pivot_wider - a method for turning data from long format to a wide format
+
+#### stringr package:
+
+str_detect - used to tell R to perform functions on a column based on an exact character string match
+
+# Examples of dplyr functions
+
+## Load packages and data
+
+```{r load required packages}
+
+
+# install pacman package if not installed
+install.packages("pacman")
+
+
+# p_load checks if packages are installed, installs them if they are not, and loads them
+pacman::p_load(tidyverse, palmerpenguins)
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# load in penguin data from the palmerpenguins package
+
+data<- palmerpenguins::penguins
+
+str(data)
+
+head(data)
+tail(data)
+
+
+```
+
+# Moving column positions
+
+```{r Relocate}
+
+
+# change column positions in data frame
+
+data %>%
+  dplyr::relocate(year, .before = species)
+
+
+# you can relocate multiple columns at once by using c() function
+data %>%
+  dplyr::relocate(c(sex, species), .after = island)
+
+
+```
+
+# Arrange data by row value
+
+```{r Arrange}
+
+# arrange our data frame by decending year
+data %>%
+  dplyr::arrange(desc(year))
+
+
+# arrange our data by sex and flipper length
+
+data %>%
+  dplyr::group_by(sex) %>%
+  dplyr::arrange(flipper_length_mm, .by_group = TRUE) %>%
+  dplyr::ungroup()
+
+ #must specify .by_group = TRUE when grouping by multiple critera (i.e., columns)
+  
+# note that all rows with NAs in the critera columns being used by arrange are by default moved to the end of the data frame. Watch this especially if you're working with time series data
+```
+
+# Renaming Columns
+
+```{r Rename and rename_with}
+
+# rename bill_length_mm to BL
+data %>%
+  dplyr::rename(BL = bill_length_mm)
+
+
+# append the letter A to all columns
+data %>%
+    rename_with(~ paste0(., "A"))
+
+# the "~" is a generic function (lambda function) that tells R to apply the rename_with to all column names (.,) in the data frame
+
+
+
+# chain multiple renames
+data %>%
+  dplyr::rename(BL = bill_length_mm,
+                BD = bill_depth_mm)
+
+```
+
+# Subsetting columns
+
+```{r Select}
+
+# create a new data frame with only species, island and body mass
+data %>%
+  dplyr::select(species, island, body_mass_g)
+
+
+# Keep all coulmns except bill length
+data %>%
+  dplyr::select(!bill_length_mm)
+
+
+# keep all columns excet bill length and body mass
+data %>%
+  dplyr::select(!c(bill_length_mm, body_mass_g))
+# note that you need the c() function when working with ! operators
+
+
+# keep only numeric columns
+data %>%
+  dplyr::select(where(is.numeric))
+
+```
+
+# Create new columns
+
+```{r Mutate}
+
+# create a new column that is a ratio of bill length to bill depth
+data %>%
+  dplyr::mutate(LD_ratio = bill_length_mm / bill_depth_mm)
+
+
+# create new column for penguin ID and bill length-depth ratio
+data %>%
+  dplyr::mutate(LD_ratio = bill_length_mm / bill_depth_mm,
+                ID = row_number())
+
+
+```
+
+# Filter based on condition
+
+```{r Filter}
+
+# subset all data from Torgensen Island
+data %>%
+  dplyr::filter(island == "Torgersen") # == means exact character match
+
+
+# subset data for Adelie penguins that have bill lengths > 44 mm (the mean)
+data %>%
+  dplyr::filter(species == "Adelie" & bill_length_mm > 44)
+
+
+# subset for males OR penguins with flipper lengths larger than 205 mm
+data %>%
+  dplyr::filter(sex == "male" | flipper_length_mm > 206)
+
+```
+
+# Slice
+
+```{r slice functions}
+
+# slice is row-wise method of subsetting data
+# see ?slice() for explanation of the different types
+
+
+# subset to keep the first 20 rows of data
+data %>%
+  dplyr::slice(1:20)
+
+
+# randomly select 5 rows
+data %>%
+  dplyr::slice_sample(n = 5)
+
+# note that the random slice will be different every time you run it
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+# subset max or min value(s) with slice_min or slice_max
+
+# subset for the three smallest bill_depths
+data %>%
+  dplyr::slice_min(bill_depth_mm, n = 3)
+
+
+
+```
+
+# Count
+
+```{r Count}
+
+# count the number of observations per male and female penguins
+
+data %>% 
+  dplyr::count(sex)
+
+# or
+
+dplyr::count(data, sex)
+
+
+# IMPORTANT INFO FOR EXERCISES:
+# count() will always create a new column called "n"
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# count can also handle nested grouping (like the group_by function)
+
+data %>% 
+  dplyr::count(sex, species)
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# you can extract or perform operations on the new column "n" by chaining functions together
+
+data %>%
+  dplyr::count(sex, species) %>%
+  dplyr::mutate(log_n = log(n))
+
+
+```
+
+# Group_by and Summarise
+
+There are three functions that normally go together: group_by, summarise, and ungroup. group_by sets up the grouping structure, summarise performs whatever calculations you want, and ungroup clears the grouping structure. It's always a good idea to ungroup the data. Leaving the data grouped could lead to problems in calculations or manipulations further down the pipe.
+
+```{r Group and Summerise}
+
+# calculate the mean, standard deviation and number of observations for flipper length for males and females
+data %>%
+  dplyr::group_by(sex) %>%
+  dplyr::summarise(mean = mean(flipper_length_mm, na.rm = TRUE),
+                   sd = sd(flipper_length_mm, na.rm = TRUE),
+                   number_obs = n()) %>%
+  dplyr::ungroup()
+
+# na.rm = TRUE tells R to exclude NAs from the calculations
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# group_by and summarise can be used to count the number of observations for a group as well using the n() function
+
+data %>%
+  dplyr::group_by(species, island) %>%
+  dplyr::summarise(num_penguins = n()) %>%
+  dplyr::ungroup()
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# group by when adding new column
+data %>%
+  dplyr::group_by(island) %>%
+  dplyr::mutate(bill_ratio = bill_length_mm / bill_depth_mm) %>%
+  dplyr::ungroup()
+
+
+```
+
+# Across
+
+```{r}
+
+# use to apply functions to multiple columns
+
+
+# change scale of all numeric variables from mm to m
+
+data %>%
+  dplyr::mutate(across(where(is.numeric), ~ (.x) / 1000))
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# what if we don't want to include year?
+
+data %>%
+  dplyr::mutate(across(where(is.numeric) & !all_of("year"), ~ (.x) / 1000))
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# applying across for select variables
+
+data %>%
+  dplyr::mutate(across(
+    c(bill_length_mm, body_mass_g), 
+    ~ (.x) - mean(.x, na.rm = TRUE))) %>%
+  dplyr::select(bill_length_mm, body_mass_g)
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# we can use accross to summarise variables too
+
+
+# reduce the data frame down to mean bill lengths, bill depths, and flipper lengths for each by species, sex, and island
+
+summarised_data<- data %>%
+  dplyr::group_by(species, sex, island) %>%
+  dplyr::summarise(across(bill_length_mm:flipper_length_mm, 
+                          ~ mean(.x, na.rm = TRUE),
+                          .names = "mean_{.col}")) %>%
+  dplyr::ungroup()
+
+str(summarised_data)
+
+
+
+# the .names part: "mean" tells it to prefix the summary statistic name to each column. _ tells it to put an underscore here. {.col} tells it to paste the column name here.
+
+```
+
+# Time Series - Lubridate
+
+```{r Lubridate package}
+
+econ_data<- ggplot2::economics
+
+str(econ_data)
+head(econ_data)
+
+
+# add month, year, day of year, etc. using functions in lubridate
+
+econ_data %>%
+  dplyr::mutate(month = lubridate::month(date), # <- "date" must be date class
+                year = lubridate::year(date),
+                day_of_year = lubridate::yday(date)) 
+
+# works on timestamp (POSIXct class) objects too - e.g., 2010-01-01 11:30:00
+
+
+```
+
+# Case_when
+
+```{r case_when}
+
+# create a new factor column based on body mass index with the levels small, medium, large
+
+data %>%
+  dplyr::mutate(size = case_when(
+    body_mass_g <= 3000 ~ "small",
+    body_mass_g >3000 & body_mass_g <= 5000 ~ "medium",
+    body_mass_g >5000 ~ "large")
+  )
+
+```
+
+# Pivoting
+
+```{r Pivoting}
+
+# pivot_longer
+
+head(data)
+
+long_data<-data %>%
+  tidyr::pivot_longer(cols = c(bill_length_mm:body_mass_g),
+                      names_to = "body_measurements",
+                      values_to = "values") %>% print()
+
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# pivot wider
+
+# fish encounters data - already in long-form
+print(tidyr::fish_encounters)
+
+tidyr::fish_encounters %>%
+  pivot_wider(names_from = station,
+              values_from = seen)
+
+
+```
+
+# Extensions to ggplot2
+
+```{r ggplot}
+
+# subset data to only contain island called "Dream" and plot bill depth vs length. Color by sex
+
+data %>%
+  dplyr::filter(island ==  "Dream" & !is.na(sex)) %>%
+  
+  ggplot(aes(bill_depth_mm, bill_length_mm, color = sex))+
+  geom_point()+
+  theme_bw()+
+  ggtitle("Bill length vs bill depth for Dream Island")
+
+# !is.na(sex) filters out all rows where the sex of the penguin is unknown
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+# Take mean of flipper length of each species for each island, and plot mean flipper length by species for each island
+
+data %>%
+  dplyr::group_by(species, island) %>%
+  dplyr::summarise(mean =  mean(flipper_length_mm, na.rm = TRUE)) %>%
+  dplyr::ungroup() %>%
+  
+  ggplot(aes(species, mean, fill = species))+
+  geom_col()+
+  theme_bw()+
+  scale_fill_brewer(palette = "Dark2")+ # uses colorblind-friendly colors
+  facet_wrap(~island)
+
+
+```
+
+# Exercises
+
+1.  Filter the penguin data to retain only rows for female penguins and the columns for species, island, and body mass
+
+```{r Ex. 1}
+
+data %>%
+
+```
+
+2.  Calculate mean flipper length for each species for each island.
+
+```{r}
+
+data %>%
+
+
+```
+
+3.  Calculate the bill length to bill depth ratio, filter out all rows with a ratio \>= 3, and arrange the data frame by sex
+
+```{r}
+
+data %>%
+
+
+  
+  
+```
+
+4.  Create a new factor column called "bill_size" which consists of three factor levels (small, medium, large) based on bill length where a bill length of \<= 40 is small, \>40 to \<= 50 is medium, and \>50 is large. Then calculate the mean flipper length for each size class for each species along with the number of observations per size class/species combination
+
+```{r}
+
+# Hint: don't forget that the n() function can be used to count observations by group
+
+data %>%
+
+  
+
+
+```
+
+5.  For this simulated fisheries count dataset, pivot the species columns from wide-form to long-form so that all fish species are in a column called "species" and all count values are in a column called "count". Then, convert this new "species" column to a factor.
+
+    Bonus: plot count against year for each species (count = y, year = x) faceted by station.
+
+```{r}
+
+# Simulate the dataset
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Create the data frame
+fish_counts <- data.frame(
+  year = rep(2019:2023, each = 4),
+  station = rep(paste0("Station_", 1:4), times = 5),
+  yellow_perch = rpois(20, lambda = 15),
+  smallmouth_bass = rpois(20, lambda = 10),
+  largemouth_bass = rpois(20, lambda = 8),
+  blue_gill = rpois(20, lambda = 20),
+  crappie = rpois(20, lambda = 12)
+)
+
+str(fish_counts)
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# write code here:
+
+
+fish_counts %>%
+
+
+
+```
+
+6.  Using the ggplot2 economics dataset, reduce the data frame to a form containing only the monthly average pop and unemploy values for each year. Hint: You'll need the functions from the lubridate package and the across function from dplyr, along with others.
+
+    Bonus: Make a scatter plot of monthly unemploy across years for the months of May (5) and June (6)
+
+```{r}
+
+str(ggplot2::economics)
+head(ggplot2::economics)
+
+
+economics %>%
+
+
+
+```
+
+7.  In the penguins data, calculate the number of male and female that meet the following criteria:
+    1.  Observed on the Biscoe island
+    2.  Body mass index \> 4050
+    3.  Observed in year 2008
+
+```{r}
+
+data %>%
+
+
+
+```
+
+8.  Find the penguin with the largest flipper length for each species-island combination.
+
+```{r}
+
+data %>%
+
+```
+
+9.  Determine the proportion of each species on each island.
+
+    Proportion = \# of penguins of a single species / sum of all penguins
+
+    Hint: the first function in your pipe should be count( )
+
+```{r}
+
+data %>%
+
+  
+```
+
+10. For the penguins data, perform the following manipulations:
+
+    1.  filter out any rows where sex is unknown.
+
+    2.  Calculate mean flipper length and number of individuals per sex per island.
+
+    3.  Pivot the data to wide form (one column for sex, individual columns for mean flipper length and penguin count for each island).
+
+    Hint: you should have a tibble with 2 rows and 7 columns when finished.
+
+```{r}
+
+data %>%
+
+  
+```
+
+# Exercise Answers
+
+1.  Filter the penguin data to retain only rows for female penguins and the columns for species, island, and body mass
+
+```{r Ex. 1}
+
+data %>%
+  dplyr::filter(sex == "female") %>%
+  dplyr::select(species, island, body_mass_g)
+
+```
+
+2.  Calculate mean flipper length for each species for each island.
+
+```{r}
+
+data %>%
+  dplyr::group_by(species, island) %>%
+  dplyr::summarise(mean_flip_length = mean(flipper_length_mm, na.rm = TRUE)) %>%
+  dplyr::ungroup()
+
+```
+
+3.  Calculate the bill length to bill depth ratio, filter out all rows with a ratio \>= 3, and arrange the data frame by sex
+
+```{r}
+
+data %>%
+  dplyr::mutate(BLD_ratio = bill_length_mm / bill_depth_mm) %>%
+  dplyr::filter(!BLD_ratio >= 3) %>%
+  dplyr::arrange(sex)
+
+```
+
+4.  Create a new factor column called "bill_size" which consists of three factor levels (small, medium, large) based on bill length where a bill length of \<= 40 is small, \>40 to \<= 50 is medium, and \>50 is large. Then calculate the mean flipper length for each size class for each species along with the number of observations per size class/species combination
+
+```{r}
+
+# Hint: don't forget that the n() function can be used to count observations by group
+
+data %>%
+  dplyr::mutate(bill_size = case_when(
+    bill_length_mm <= 40 ~ "small",
+    bill_length_mm >40 & bill_length_mm <= 50 ~ "medium",
+    bill_length_mm > 50 ~ "large")
+    ) %>%
+  dplyr::group_by(bill_size, species) %>%
+  dplyr::summarise(mean = mean(flipper_length_mm, na.rm = TRUE),
+                   n = n()) %>%
+  dplyr::ungroup()
+  
+```
+
+5.  For this simulated fisheries count dataset, pivot the species columns from wide-form to long-form so that all fish species are in a column called "species" and all count values are in a column called "count". Then, convert this new "species" column to a factor.
+
+    Bonus: plot count against year for each species (count = y, year = x) faceted by station.
+
+```{r}
+
+# Simulate the dataset
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Create the data frame
+fish_counts <- data.frame(
+  year = rep(2019:2023, each = 4),
+  station = rep(paste0("Station_", 1:4), times = 5),
+  yellow_perch = rpois(20, lambda = 15),
+  smallmouth_bass = rpois(20, lambda = 10),
+  largemouth_bass = rpois(20, lambda = 8),
+  blue_gill = rpois(20, lambda = 20),
+  crappie = rpois(20, lambda = 12)
+)
+
+str(fish_counts)
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# write code here:
+
+
+fish_counts %>%
+  tidyr::pivot_longer(
+    cols = yellow_perch:crappie,
+    names_to = "species",
+    values_to = "count",
+    names_transform = list(species = as.factor))  
+  
+
+  
+# bonus
+
+fish_counts %>%
+  tidyr::pivot_longer(
+    cols = yellow_perch:crappie,
+    names_to = "species",
+    values_to = "count",
+    names_transform = list(species = as.factor)) %>%
+  
+  ggplot(aes(x = year, y = count, color = species))+
+  geom_point()+
+  geom_line()+
+  theme_bw()+
+  facet_wrap(~station)
+
+
+```
+
+6.  Using the ggplot2 economics dataset, reduce the data frame to a form containing only the monthly average pop and unemploy values for each year. Hint: You'll need the functions from the lubridate package and the across function from dplyr, along with others.
+
+    Bonus: Make a scatter plot of monthly unemploy across years for the months of May (5) and June (6)
+
+```{r}
+
+str(economics)
+head(economics)
+
+#economics %>%
+
+economics %>%
+  dplyr::mutate(month = lubridate::month(date),
+                year = lubridate::year(date)) %>%
+  dplyr::group_by(month, year) %>%
+  dplyr::summarise(across(c(pop, unemploy), ~ mean(.x, na.rm = TRUE))) %>%
+  dplyr::ungroup()
+  
+
+
+
+# bonus
+
+economics %>%
+  dplyr::mutate(month = lubridate::month(date),
+                year = lubridate::year(date)) %>%
+  dplyr::group_by(month, year) %>%
+  dplyr::summarise(across(c(pop, unemploy), ~ mean(.x, na.rm = TRUE))) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(month == 5 | month == 6) %>%
+  
+  ggplot(aes(year, unemploy))+
+  geom_point()+
+  theme_bw()+
+  facet_wrap(~month)
+
+
+```
+
+7.  In the penguins data, calculate the number of male and female that meet the following criteria:
+    1.  Observed on the Biscoe island
+    2.  Body mass index \> 4050
+    3.  Observed in year 2008
+
+```{r}
+
+data %>%
+  dplyr::filter(island == "Biscoe" & body_mass_g > 4050 & year == 2008) %>%
+  group_by(sex) %>%
+  dplyr::summarise(n = n()) %>%
+  dplyr::ungroup()
+
+
+```
+
+8.  Find the penguin with the largest flipper length for each species-island combination.
+
+```{r}
+
+data %>%
+  dplyr::group_by(species, island) %>%
+  dplyr::slice_max(flipper_length_mm, n = 1) %>%
+  dplyr::ungroup()
+
+```
+
+9.  Determine the proportion of each species on each island.
+
+    Proportion = \# of penguins of a single species / sum of all penguins
+
+    Hint: the first function in your pipe should be count( )
+
+```{r}
+
+data %>%
+  dplyr::count(species, island) %>%
+  dplyr::group_by(island) %>%
+  dplyr::mutate(proportion = n / sum(n)) %>%
+  dplyr::ungroup()
+```
+
+10. For the penguins data, perform the following manipulations:
+
+    1.  filter out any rows where sex is unknown.
+
+    2.  Calculate mean flipper length and number of individuals per sex per island.
+
+    3.  Pivot the data to wide form (one column for sex, individual columns for mean flipper length and penguin count for each island).
+
+    Hint: you should have a tibble with 2 rows and 7 columns when finished.
+
+```{r}
+
+data %>%
+  dplyr::filter(!is.na(sex)) %>%
+  dplyr::group_by(sex, island) %>%
+  dplyr::summarise(mean_flip_length = mean(flipper_length_mm, na.rm = TRUE), 
+                   penguin_count = n()) %>%
+  dplyr::ungroup() %>%
+  tidyr::pivot_wider(
+    names_from = island,
+    values_from = c(mean_flip_length, penguin_count)
+  )
+  
+```
