@@ -90,7 +90,7 @@ R code gets messy quickly. Staying organized and consistent reduces your risk of
 
     ```
 
-2.  Whitespace - it's a good idea to add whitespace before your pipe operator (%\>%). You should also start a new line after each operator. This "stacking" keeps the code readable and makes troubleshooting easier.
+2.  Whitespace - it's a good idea to add whitespace before your pipe operator (%>%). You should also start a new line after each operator. This "stacking" keeps the code readable and makes troubleshooting easier.
 
     ```{r}
 
